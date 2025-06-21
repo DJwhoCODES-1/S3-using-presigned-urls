@@ -2,6 +2,7 @@ const {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectCommand,
 } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
@@ -50,6 +51,15 @@ exports.getDownloadUrls = async (kycDoc) => {
       });
       const url = await getSignedUrl(s3, command, { expiresIn: 300 });
       return { type, url, status: doc.status };
+    })
+  );
+};
+
+exports.deleteDocObject = async (s3_key) => {
+  s3.send(
+    new DeleteObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET,
+      Key: s3_key,
     })
   );
 };

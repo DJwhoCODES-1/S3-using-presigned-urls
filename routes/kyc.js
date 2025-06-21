@@ -1,7 +1,11 @@
 const express = require("express");
 const router = express.Router();
 const KycModel = require("../models/kycModel");
-const { getUploadUrls, getDownloadUrls } = require("../services/s3Service");
+const {
+  getUploadUrls,
+  getDownloadUrls,
+  deleteDocObject,
+} = require("../services/s3Service");
 
 // Generate pre-signed URLs and create DB record
 router.post("/request-upload", async (req, res) => {
@@ -47,7 +51,7 @@ router.post("/admin-verify", async (req, res) => {
     updates[`documents.${doc}.status`] = status;
   }
 
-  const doc = await Kyc.findOneAndUpdate(
+  const doc = await KycModel.findOneAndUpdate(
     { userId },
     {
       $set: {
@@ -61,6 +65,44 @@ router.post("/admin-verify", async (req, res) => {
   );
 
   res.json({ updated: true, doc });
+});
+
+// Admin requests or rejects docs
+router.post("/request-reupload", async (req, res) => {
+  try {
+    const { userId, docType } = req.body;
+
+    if (!userId || !docType) {
+      return res
+        .status(400)
+        .json({ message: "userId and docType are required" });
+    }
+
+    const kycDoc = await KycModel.findOne({ userId });
+    if (!kycDoc || !kycDoc.documents?.[docType]) {
+      return res
+        .status(404)
+        .json({ message: "Document not found for this user" });
+    }
+
+    const s3_key = kycDoc.documents[docType].s3_key;
+
+    // Delete existing object
+    await deleteDocObject(s3_key);
+
+    // Update status in MongoDB
+    kycDoc.documents[docType].status = "reupload";
+    await kycDoc.save();
+
+    return res.status(200).json({
+      message: "Reupload requested",
+      s3_key,
+      status: "reupload",
+    });
+  } catch (err) {
+    console.error("Reupload error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 module.exports = router;
